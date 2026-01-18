@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: autonanny-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: autonanny
+      POSTGRES_PASSWORD: autonanny_secret_2024
+      POSTGRES_DB: autonanny
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autonanny -d autonanny"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: .
+    container_name: autonanny-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://autonanny:autonanny_secret_2024@db:5432/autonanny
+      APP_NAME: AutoNanny
+      PORT: 8000
+      LOG_LEVEL: info
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+      FIREBASE_CLIENT_CREDENTIALS: fb_client.json
+      FIREBASE_DRIVER_CREDENTIALS: fb_driver.json
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./logs:/app/logs
+      - ./fb_client.json:/app/fb_client.json:ro
+      - ./fb_driver.json:/app/fb_driver.json:ro
+
+volumes:
+  postgres_data:
