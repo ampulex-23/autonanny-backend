@@ -3,7 +3,12 @@ from typing import Union
 import googlemaps
 from config import settings
 
-gmaps = googlemaps.Client(key=settings.google_maps_api_key)
+gmaps = None
+if settings.google_maps_api_key:
+    try:
+        gmaps = googlemaps.Client(key=settings.google_maps_api_key)
+    except Exception:
+        pass
 
 
 async def get_lat_lon(
@@ -18,6 +23,8 @@ async def get_lat_lon(
     Returns:
         tuple: Координаты - lat, lon
     """
+    if not gmaps:
+        return None, None
     geocode_result = gmaps.geocode(address)
     if geocode_result:
         location = geocode_result[0]["geometry"]["location"]
@@ -39,6 +46,8 @@ async def get_distance_and_duration(
     Returns:
         tuple: Расстояние в метрах, время в секундах
     """
+    if not gmaps:
+        return 0, 0
     result = gmaps.distance_matrix(
         origins=from_address, destinations=to_address, mode="driving"  # на машине
     )
