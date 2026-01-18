@@ -1,0 +1,417 @@
+import math
+import json
+import uuid
+import time
+import traceback
+from fastapi import APIRouter, WebSocket, Request, Depends
+from starlette.websockets import WebSocketDisconnect
+import logging
+
+from const.cost_formulas import get_total_cost_of_the_trip
+from const.dependency import has_access, has_access_driver
+from models.authentication_db import UsersUserAccount, UsersBearerToken
+from models.chats_db import ChatsChatParticipant, ChatsChat
+from models.drivers_db import DataDriverMode
+from models.orders_db import UsersUserOrder, DataOrder, DataOrderInfo, \
+    DataOrderAddresses, WaitDataSearchDriver, DataOrderOtherParametrs
+from const.login_const import forbidden
+from const.orders_const import start_onetime_drive, CurrentDrive, JSONResponse, you_have_active_drive, \
+    cant_decline_in_drive_mode
+from const.users_const import order_not_found, success_answer
+from defs import error, get_time_drive, get_order_data, sendPush, get_order_data_for_socket, get_order_data_socket
+from models.static_data_db import DataCarTariff
+from sevice.google_maps_api import get_lat_lon, get_distance_and_duration
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+users = {}
+clients = {}
+
+"""
+ПО СОСТОЯНИЮ НА 24.01.2025
+
+Статусы заказа:
+1	Создан
+2	Отменён водителем
+3	Отменён пользователем
+4	Поиск водителя
+5	Водитель в пути
+6	Ожидание
+7	На месте
+8	Авария
+9	Чрезвычайная ситуация
+10	Ребёнку плохо
+11	Завершён
+12	В промежуточной точке
+13	Водитель найден
+14	Водитель начал поездку
+15	Водитель прибыл на конечную точку заказа
+
+
+send_order_to_driver(id_order) - отправляет заказ всем активным водителям в радиусе 3км
+
+process_active_orders(driver_mode, websocket) - отправляет все активные заказы 
+в радиусе 3км водителю в сокет
+
+update_order_status(id_order) - обновляет статус заказа и делает его неактивным
+
+send_message_to_driver(id_order, message_data) - отправляет сообщение 
+водителю данного заказа
+
+send_message_to_client(id_order, status) - отправляет сообщение со статусом 
+заказа клиента клиенту в сокет.
+
+calculate_distance(lat1, lon1, lat2, lon2) - высчитывает расстояние между 
+точками по прямой
+
+is_valid_coordinate(lat, lon) - проверяет валидность координат
+
+
+
+НЕ ИСПОЛЬЗУЕТСЯ ---------------------------------------------------------
+
+check_and_update_status_auto (driver_mode, websocket, current_order) - проверяет и 
+обновляет статус (из "водитель начал поездку [14]" в "водитель прибыл на 
+конечную точку заказа [15]" автоматически при обновлении координат водителя 
+(до финиша <50м). Проверка была отключена так как выполняется на фронте.
+
+send_active_orders_to_driver(websocket)
+---------------------------------------------------------------------------------------
+
+
+
+Менеджеры подключений к вебсокетам-------------------------------
+
+ConnectionManager (водительский сокет)
+
+--connect(self, websocket: WebSocket, token: str) - подключает к сокету, 
+сохраняет подключение у словаре активных подключений и оповещает 
+(вызывает `notify_clients_about_driver`) всех активных клиентов в радиусе 3км от водителя.
+
+--disconnect(self, token) - отключает от сокета и удаляет подключение из 
+словаря активных подключений.
+
+--send_personal_message(self, message: str, websocket: WebSocket) - отправляет 
+сообщение в сокет.
+
+--notify_clients_about_driver(self, driver_token) - оповещает всех активных клиентов 
+в радиусе 3км от водителя.
+
+--notify_clients_about_driver_disconnect(self, driver_token) - оповещает ВООБЩЕ ВСЕХ 
+активных клиентов об отключении водителя.
+
+--get_driver_data(self, token) - возвращает инфу о водителе (id, lat, lon).
+
+
+
+ConnectionManagerClient (клиентский сокет)
+
+--connect(self, websocket: WebSocket, token: str) - подключает к сокету, сохраняет 
+подключение у словаре активных подключений, отправляет 
+(вызывает `send_drivers_to_client()`) всех активных водителей в радиусе 3км в сокет, 
+сохраняет заказ пользователя в словаре заказов и возвращает его id в сокет.
+
+--disconnect(self, token) - отключает от сокета и удаляет подключение из словаря 
+активных подключений.
+
+--send_personal_message(self, message: str, websocket: WebSocket) - отправляет 
+сообщение в сокет.
+
+--send_drivers_to_client(self, token) - отправляет всех активных водителей в 
+радиусе 3км в сокет.
+
+--get_driver_data(self, token) - возвращает инфу о водителе (id, lat, lon).
+"""
+
+
+
+def generate_responses(answers: list):
+    answer = {}
+    for data in answers:
+        description = json.loads(data.body.decode('utf-8'))
+        if "message" in description:
+            description = description["message"]
+        elif "detail" in description:
+            description = description["detail"]
+        else:
+            description = "Response"
+        answer[data.status_code] = {
+            "content": {
+                "application/json": {
+                    "example": json.loads(data.body.decode("utf-8"))
+                }
+            },
+            "description": description
+        }
+    return answer
+
+
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: dict = {}
+        self.active_orders: dict = {}
+
+    async def connect(self, websocket: WebSocket, token: str):
+        await websocket.accept()
+        self.active_connections[token] = websocket
+        logger.info(f"Driver connected: {token}")
+        await self.notify_clients_about_driver(token)
+
+        # Отправляем водителю все активные заявки клиентов
+        # TODO: Deprecated. Условие никогда не выполняется. См. `process_active_orders()`
+        if token in self.active_orders:
+            order = self.active_orders[token]
+            message = json.dumps(order, ensure_ascii=False)
+            await self.send_personal_message(message, websocket)
+
+    async def disconnect(self, token: str):
+        websocket = self.active_connections.pop(token, None)
+        if websocket:
+            try:
+                await websocket.close()
+                #await DataDriverMode.filter(websocket_token=token).delete()
+            except Exception as e:
+                logger.info(f"Error during disconnect: {str(e)}")
+
+    async def send_personal_message(self, message: str, websocket: WebSocket):
+        try:
+            await websocket.send_text(message)
+            logger.info(f"Sent message: {message}")
+        except Exception as e:
+            logger.info(f"Error sending message: {str(e)}")
+
+    async def notify_clients_about_driver(self, driver_token: str):
+        # Получаем данные водителя
+        driver_data = await self.get_driver_data(driver_token)
+        if not driver_data:
+            return
+
+        # Проходим по всем активным клиентам и проверяем расстояние
+        for client_token, client_socket in manager_client.active_connections.items():
+            # Получаем данные о клиенте и его заказе
+            user_order = await UsersUserOrder.filter(token=client_token, isActive=True).first()
+            if user_order:
+                order_info = await DataOrderInfo.filter(id_order=user_order.id_order).first()
+                if order_info and is_valid_coordinate(order_info.client_lat, order_info.client_lon):
+                    # Вычисляем расстояние между водителем и клиентом
+                    distance = calculate_distance(
+                        driver_data["latitude"], driver_data["longitude"],
+                        order_info.client_lat, order_info.client_lon
+                    )
+                    logger.info(f"Расстояние от водителя {driver_data['id_driver']} до клиента: {distance:.2f} км")
+
+                    # Если расстояние меньше или равно 3 км, отправляем данные водителя клиенту
+                    if distance <= 3:
+                        message = json.dumps({"type": "driver_update", "data": driver_data}, ensure_ascii=False)
+                        await manager_client.send_personal_message(message, client_socket)
+                        logger.info(f"Отправлены данные водителя {driver_data['id_driver']} клиенту {client_token}")
+                    else:
+                        logger.info(f"Водитель {driver_data['id_driver']} исключен из-за расстояния ({distance:.2f} км)")
+
+    async def notify_clients_about_driver_disconnect(self, driver_token: str):
+        # TODO: Пока не используется
+        message = json.dumps({"type": "driver_disconnect", "driver_token": driver_token}, ensure_ascii=False)
+        for client_socket in manager_client.active_connections.values():
+            await manager_client.send_personal_message(message, client_socket)
+
+    async def get_driver_data(self, token: str):
+        try:
+            # Получаем данные водителя
+            driver = await DataDriverMode.filter(websocket_token=token).first()
+            if not driver:
+                return {}
+
+            return {
+                "id_driver": driver.id_driver,
+                "latitude": driver.latitude,
+                "longitude": driver.longitude
+            }
+        except Exception as e:
+            logger.info(f"Error fetching driver data: {str(e)}")
+            return {}
+
+
+manager_driver = ConnectionManager()
+
+
+async def send_active_orders_to_driver(websocket: WebSocket):
+    """
+    Отправляет водителю все активные заявки клиентов, которые подключены к клиентским сокетам
+    """
+    # TODO: Deprecated. Функция не используется. См. `process_active_orders()`
+    try:
+        # Получаем всех клиентов, подключенных к сокетам
+        for token, client_socket in clients.items():
+            user_order = await UsersUserOrder.filter(token=token, isActive=True).first()
+            if user_order:
+                # Получаем информацию о заказе для сокета
+                order_info = await get_order_data_for_socket(user_order.id_order)
+
+                # Проверяем наличие данных заказа
+                if order_info:
+                    # Получаем местоположение клиента
+                    client_lat = order_info.get('client_lat')
+                    client_lon = order_info.get('client_lon')
+
+                    # Получаем местоположение водителя
+                    driver_mode = await DataDriverMode.filter(websocket_token=websocket.cookies.get('token')).first()
+                    if driver_mode and is_valid_coordinate(client_lat, client_lon) and is_valid_coordinate(
+                            driver_mode.latitude, driver_mode.longitude):
+                        # Вычисляем расстояние между клиентом и водителем
+                        distance = calculate_distance(driver_mode.latitude, driver_mode.longitude, client_lat,
+                                                      client_lon)
+
+                        # Если расстояние меньше или равно 3 км, отправляем заявку водителю
+                        if distance <= 3:
+                            message = json.dumps(order_info, ensure_ascii=False)
+                            await manager_driver.send_personal_message(message, websocket)
+                        else:
+                            logger.info(f"Заявка {user_order.id_order} не отправлена водителю из-за превышения радиуса.")
+                    else:
+                        logger.info(f"Некорректные координаты для водителя или клиента.")
+                else:
+                    logger.info(f"Ошибка: get_order_data вернул null для заказа ID: {user_order.id_order}")
+            else:
+                logger.info(f"No active orders found for client with token: {token}")
+    except Exception as e:
+        logger.info(f"Error sending active orders to driver: {str(e)}")
+        await error(traceback.format_exc())
+
+
+async def send_message_to_client(id_order, status):
+    """Отправка сообщения клиенту"""
+    try:
+        user_order = await UsersUserOrder.filter(id_order=id_order).first()
+
+        if user_order and user_order.token in clients:
+            client_socket = clients[user_order.token]
+            message = json.dumps({"status": status})
+            await manager_client.send_personal_message(message, client_socket)
+        else:
+            logger.info(f"Client socket not found for token {user_order.token if user_order else 'unknown'}")
+    except Exception as e:
+        logger.info(f"Error sending message to client: {str(e)}")
+        await error(traceback.format_exc())
+
+
+@router.websocket("/current-drive-mode/{token}")
+async def websocket_endpoint(websocket: WebSocket, token: str):
+    """ Сокет для водителей """
+    status_mapping = {
+        7: [5],
+        6: [7],
+        14: [6, 7, 8, 9, 10],
+        11: [15],
+        15: [14],
+    }
+    logger.info(f"Process (/current-drive-mode/{token}) request")
+    try:
+        await manager_driver.connect(websocket, token)
+        users[token] = websocket
+
+        # Получаем данные о местоположении водителя
+        driver_mode = await DataDriverMode.filter(websocket_token=token).first()
+        if not driver_mode:
+            logger.info(f"No driver (driver_mode) found for token: {token}")
+            return
+
+        if not is_valid_coordinate(driver_mode.latitude, driver_mode.longitude):
+            logger.info(f"Invalid driver location for token: {token}")
+            return
+
+        # Обрабатываем активные заказы до цикла while
+        await process_active_orders(driver_mode, websocket, token)
+
+        while True:
+            try:
+                message = await websocket.receive_text()
+                message_data = json.loads(message)
+            except json.JSONDecodeError:
+                await manager_driver.send_personal_message(json.dumps({"error": "Invalid JSON format"}), websocket)
+                continue
+
+            # Обновление координат водителя
+            lrder_info.get('client_lon')
+
+                    # Получаем местоположение водителя
+                    driver_mode = await DataDriverMode.filter(websocket_token=websocket.cookies.get('token')).first()
+                    if driver_mode and is_valid_coordinate(client_lat, client_lon) and is_valid_coordinate(
+                            driver_mode.latitude, driver_mode.longitude):
+                        # Вычисляем расстояние между клиентом и водителем
+                        distance = calculate_distance(driver_mode.latitude, driver_mode.longitude, client_lat,
+                                                      client_lon)
+
+                        # Если расстояние меньше или равно 3 км, отправляем заявку водителю
+                        if distance <= 3:
+                            message = json.dumps(order_info, ensure_ascii=False)
+                            await manager_driver.send_personal_message(message, websocket)
+                        else:
+                            logger.info(f"Заявка {user_order.id_order} не отправлена водителю из-за превышения радиуса.")
+                    else:
+                        logger.info(f"Некорректные координаты для водителя или клиента.")
+                else:
+                    logger.info(f"Ошибка: get_order_data вернул null для заказа ID: {user_order.id_order}")
+            else:
+                logger.info(f"No active orders found for client with token: {token}")
+    except Exception as e:
+        logger.info(f"Error sending active orders to driver: {str(e)}")
+        await error(traceback.format_exc())
+
+
+async def send_message_to_client(id_order, status):
+    """Отправка сообщения клиенту"""
+    try:
+        user_order = await UsersUserOrder.filter(id_order=id_order).first()
+
+        if user_order and user_order.token in clients:
+            client_socket = clients[user_order.token]
+            message = json.dumps({"status": status})
+            await manager_client.send_personal_message(message, client_socket)
+        else:
+            logger.info(f"Client socket not found for token {user_order.token if user_order else 'unknown'}")
+    except Exception as e:
+        logger.info(f"Error sending message to client: {str(e)}")
+        await error(traceback.format_exc())
+
+
+@router.websocket("/current-drive-mode/{token}")
+async def websocket_endpoint(websocket: WebSocket, token: str):
+    """ Сокет для водителей """
+    status_mapping = {
+        7: [5],
+        6: [7],
+        14: [6, 7, 8, 9, 10],
+        11: [15],
+        15: [14],
+    }
+    logger.info(f"Process (/current-drive-mode/{token}) request")
+    try:
+        await manager_driver.connect(websocket, token)
+        users[token] = websocket
+
+        # Получаем данные о местоположении водителя
+        driver_mode = await DataDriverMode.filter(websocket_token=token).first()
+        if not driver_mode:
+            logger.info(f"No driver (driver_mode) found for token: {token}")
+            return
+
+        if not is_valid_coordinate(driver_mode.latitude, driver_mode.longitude):
+            logger.info(f"Invalid driver location for token: {token}")
+            return
+
+        # Обрабатываем активные заказы до цикла while
+        await process_active_orders(driver_mode, websocket, token)
+
+        while True:
+            try:
+                message = await websocket.receive_text()
+                message_data = json.loads(message)
+            except json.JSONDecodeError:
+                await manager_driver.send_personal_message(json.dumps({"error": "Invalid JSON format"}), websocket)
+                continue
+
+            # Обновление координат водителя
+            l

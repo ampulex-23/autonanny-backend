@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "nannya-driver",
+  "private_key_id": "066de2c02357fa6aca25b1649ec6206909f23458",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDJfZrQGXiMrCOx\noMFAEhf6QCo1aImRbfR+qgR2fMCmokW4faN5ra/vXKeXiO7I/sY5f+zMSFTRZdUE\nwLdibf8PzKl2MNK20QOOcEjscI1mpKsPl5+ZNDgM15Hhf1pJiGDqt8lrejWz76AX\nfnxuNNW7xd/Cb9Q5Iw/y7I6EbkftYhJX/5BG+mbIuodlhUnm0oFte5ZVM/PSr3f3\nXg0LnpYO7KsiFzamoYvJ7U2S/MBSeEMOdXVNS+rWW6jL9KZHLyj7mpB3XaZ/v/RJ\nKtmjYWOB09NiX7LUdcJEpmfpkec+eW6qb9aTxEOjdHzeaR0daGUEETJlZKbpIy1p\nueZ2K0qBAgMBAAECggEATnux60AYoDbG+oAC9kl19IC80CvldfPN6e6gqWSDiASq\nQqgRnqpEXuiI0TJBzKHMpYYKPzInc58GQAEvDVSKJuXR1ltDIHm+uGNNTGe09FfM\n19h4Dq1z7bCkPqEkEoNgON0YxFgIhgufILegkS7cV/VF6M81a4IYSsfQ5Y2tT62U\nDSq8t9ZOjRdIgLHdEyTRNFdyjZOCUg8tzhUd0zlhndgt3LPFCAtXnH+00Bnz09Kq\npGDuTTNkAOk2x0YUQ6FUCTdDgDtmsF4FNf1F1I1k68KwUE9wNJkJmEJbxZ4K1JR7\nxIaLogajuyGlXItXKmDxhI1GiNPOn55uvnNrXyn+dwKBgQDu/3dtbgkZWgT8cGw6\nffqxyjQ9n4mdcpGzE/z2qv1xbwWkKBrAwP/TMVh4yqHyadbFsIV5P1vhLp2wyOd0\ne3gbju8seRLvgR3P/BBhKAakGjSIuXJIPXDjJlZnPmVx/4FE7MgWvoSezvs9vjVm\nVD3D6Ony5yg00u09AJQN/QrBewKBgQDX0xIofNds4KYDTGbHEIi0HP80CRiV7gSm\nOUc+widR1JQj9GtJfPOXZMGlHVPj9VoWfXnc/sNDjRq9WIzTWeglEi4jgsDCiigK\nTCVWlSUw9v9HGYyAckrnKIB4NRnkFCFCzoZg1U+hrvBEy4FPyXOES2WiQwUelL0M\nUOChoIKNMwKBgQDTcWa6hNg9+ptgryHBWgV6V9eCEWxRxLPMiEmL/dk+CyglhGmu\n0NFEimqoazV9309pFPPxQjHKdlCCwCutrTKkxv8pDHDJPiUfBfWDz0KY2qpRsCfA\na8M844Ub0GM1yQQX85hOLv3r9ljm1iouPydp9N1Nzl6O5XGIP8O84HsskwKBgQCE\nGiu5IIDzoaW7yx31pocmR8FlZlPoIWIzJEgZf9l1Wvq57zdkKdknx4JHwGXC2ECm\nF3Np834tcMb3MqYwD43qcvBOyA+Yg9vyQZ1xG6VCDU0/hcHcNRjn2ICaE1afpjqd\nm6/gwXAWdO+YDEBAR/wu879nzEHr7/qu+SolhAukxQKBgHADeDyPt1+xgVxxnyW0\n8tOXI+ftzEFkIiKhW6CbrYmNUal3YeZA4xYVMJJYGNxuCgQQ0GBz2gvzWLg88uPK\nCP6G+TXheTv9we2ZZsSPgR0RaY7RnGmnElTQgAXQQOscv3+UG7h9tJArXnm/FtK6\n1uwKoxzx1hrFnY8GeOrZACCo\n-----END PRIVATE KEY-----\n",
+  "client_email": "firebase-adminsdk-fbsvc@nannya-driver.iam.gserviceaccount.com",
+  "client_id": "112551280816312470525",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40nannya-driver.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
