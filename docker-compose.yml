@@ -1,10 +1,11 @@
-version: '3.8'
-
 services:
   db:
     image: postgres:15-alpine
     container_name: autonanny-db
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     environment:
       POSTGRES_USER: autonanny
       POSTGRES_PASSWORD: autonanny_secret_2024

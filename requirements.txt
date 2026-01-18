@@ -39,7 +39,7 @@ requests==2.31.0
 httpx~=0.27.2
 
 # Image processing
-opencv-python==4.10.0.84
+opencv-python-headless==4.10.0.84
 
 # PDF generation
 reportlab==4.2.5
