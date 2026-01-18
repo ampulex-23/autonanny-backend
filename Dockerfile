@@ -1,16 +1,17 @@
-# Use Python 3.11 Alpine image for smaller size and better compatibility
-FROM python:3.11-alpine
+# Use Python 3.11 slim image
+FROM python:3.11-slim-bookworm
 
 # Set working directory
 WORKDIR /app
 
 # Install system dependencies
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
-    musl-dev \
     postgresql-client \
-    postgresql-dev \
-    libffi-dev
+    libpq-dev \
+    libgl1 \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
 COPY requirements.txt .
