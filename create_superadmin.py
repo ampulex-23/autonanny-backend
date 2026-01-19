@@ -25,7 +25,7 @@ async def create_superadmin():
         # Проверяем, существует ли уже админ
         existing = await conn.fetchval(
             "SELECT id FROM users.user WHERE phone = $1",
-            "admin@autonanny.ru"
+            "+79673201280"
         )
         
         if existing:
@@ -34,7 +34,7 @@ async def create_superadmin():
             pwd_hash = hashlib.md5("admin123".encode()).hexdigest()
             await conn.execute(
                 "UPDATE authentication.authorization_data SET password = $1 WHERE login = $2",
-                pwd_hash, "admin@autonanny.ru"
+                pwd_hash, "+79673201280"
             )
             print("Пароль обновлен на: admin123")
             return
@@ -43,7 +43,7 @@ async def create_superadmin():
         admin_id = await conn.fetchval(
             '''INSERT INTO users.user (surname, name, phone, "isActive", datetime_create) 
                VALUES ($1, $2, $3, TRUE, NOW()) RETURNING id''',
-            "Суперадмин", "Админ", "admin@autonanny.ru"
+            "Суперадмин", "Админ", "+79673201280"
         )
         print(f"Создан пользователь с ID: {admin_id}")
         
@@ -53,7 +53,7 @@ async def create_superadmin():
         # Авторизационные данные
         await conn.execute(
             "INSERT INTO authentication.authorization_data (login, password, id_user) VALUES ($1, $2, $3)",
-            "admin@autonanny.ru", pwd_hash, admin_id
+            "+79673201280", pwd_hash, admin_id
         )
         print("Авторизационные данные созданы")
         
@@ -74,7 +74,7 @@ async def create_superadmin():
         print("\n" + "="*50)
         print("✅ Суперадмин создан!")
         print("="*50)
-        print(f"Логин: admin@autonanny.ru")
+        print(f"Логин: +79673201280")
         print(f"Пароль: admin123")
         print("="*50)
         
